@@ -35,8 +35,8 @@ A minimalist, interactive Linux terminal emulator built with React, styled in th
 1. Clone the repository
 
 ```bash
-git clone https://github.com/gomugomucode/arch-linux-terminal-simulator.git
-cd arch-linux-terminal-simulator
+git clone https://github.com/gomugomucode/ArchLinux-Terminal-Login
+cd ArchLinux-Terminal-Login
 ```
 
 2. Install dependencies
