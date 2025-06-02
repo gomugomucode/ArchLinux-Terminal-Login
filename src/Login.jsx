@@ -62,7 +62,7 @@ export default function Login() {
 
   return (
     <div
-      className="bg-black text-green-400 h-screen w-screen font-mono text-base p-6 overflow-hidden"
+      className="bg-black text-green-400 h-screen w-screen font-bold text-base p-6 overflow-hidden"
       tabIndex={0}
       onKeyDown={handleKeyDown}
       ref={containerRef}

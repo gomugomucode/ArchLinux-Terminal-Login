@@ -1,49 +1,74 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
+  const navigate = useNavigate();
+
   const username = "anupam";
   const hostname = "luffy";
-  const startTime = React.useRef(Date.now());
 
-  // Virtual filesystem with some fake files
+  const startTime = useRef(Date.now());
+
+  // Virtual filesystem (static for now)
   const files = {
     "readme.txt": "Welcome to your simulated Arch Linux terminal.\nFeel free to explore.",
     "todo.txt": "- Learn React\n- Build more commands\n- Master Linux shell",
     "notes.md": "# Notes\nThis is a virtual file system for demo purposes.",
   };
 
-  const [history, setHistory] = useState([
-    `Welcome to Arch Linux ${new Date().toLocaleString()}`,
-    `Last login: ${new Date().toLocaleString()} on tty1`,
-  ]);
-  const [input, setInput] = useState("");
-  const inputRef = useRef(null);
-  const [cwd, setCwd] = useState("~"); // current working directory
+  // Prompts: Each prompt has input and output lines
+  const [prompts, setPrompts] = useState([{ input: "", output: [], id: 0 }]);
 
+  // Command history for up/down arrow navigation
+  const [commandHistory, setCommandHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Current working directory (static ~ for now)
+  const [cwd] = useState("~");
+
+  const inputRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // Focus input on prompts change
   useEffect(() => {
     inputRef.current?.focus();
-  }, [history]);
+  }, [prompts]);
 
+  // Scroll terminal to bottom on history change
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [prompts]);
+
+  // Uptime calculation
   function getUptime() {
     const diff = Date.now() - startTime.current;
     const seconds = Math.floor(diff / 1000) % 60;
     const minutes = Math.floor(diff / (1000 * 60)) % 60;
     const hours = Math.floor(diff / (1000 * 60 * 60));
-    return `${hours} hours, ${minutes} minutes, ${seconds} seconds`;
+    return `${hours}h ${minutes}m ${seconds}s`;
   }
 
-  function runCommand(cmd) {
-    const trimmedCmd = cmd.trim();
-    if (!trimmedCmd) return "";
+  // Supported commands for tab completion
+  const supportedCommands = [
+    "neofetch", "echo", "date", "help", "clear", "ls",
+    "pwd", "cat", "whoami", "uptime", "history", "shutdown", "reboot", "exit"
+  ];
 
-    const parts = trimmedCmd.split(" ");
+  // Main command handler
+  function runCommand(cmd) {
+    const trimmed = cmd.trim();
+    if (!trimmed) return "";
+
+    const parts = trimmed.split(" ");
     const baseCmd = parts[0];
     const args = parts.slice(1);
 
     switch (baseCmd) {
       case "neofetch":
         return `
-anupam@luffy
+${username}@${hostname}
 ------------
 OS: Arch Linux x86_64
 Kernel: 6.8.2
@@ -79,14 +104,17 @@ Supported commands:
 - history
 - shutdown
 - reboot
+- exit
         `.trim();
 
       case "clear":
-        setHistory([]);
+        // Clearing resets prompts to initial state
+        setPrompts([{ input: "", output: [], id: 0 }]);
+        setCommandHistory([]);
+        setHistoryIndex(-1);
         return "";
 
       case "ls":
-        // List all files in the current directory (cwd is always "~" for now)
         return Object.keys(files).join("  ");
 
       case "pwd":
@@ -95,11 +123,8 @@ Supported commands:
       case "cat":
         if (args.length === 0) return "Usage: cat [filename]";
         const fileName = args[0];
-        if (files[fileName]) {
-          return files[fileName];
-        } else {
-          return `cat: ${fileName}: No such file or directory`;
-        }
+        if (files[fileName]) return files[fileName];
+        return `cat: ${fileName}: No such file or directory`;
 
       case "whoami":
         return username;
@@ -108,10 +133,9 @@ Supported commands:
         return `up ${getUptime()}`;
 
       case "history":
-        return history
-          .filter((line) => line.startsWith(`[${username}@${hostname}`))
-          .map((line, i) => `${i + 1}  ${line.replace(`[${username}@${hostname} ~]$ `, "")}`)
-          .join("\n");
+        return commandHistory
+          .map((cmd, i) => `${i + 1}  ${cmd}`)
+          .join("\n") || "No commands in history.";
 
       case "shutdown":
         return "System is shutting down... Goodbye!";
@@ -119,49 +143,111 @@ Supported commands:
       case "reboot":
         return "System is rebooting... See you soon!";
 
+      case "exit":
+        navigate("/login");
+        return "Exiting...";
+
       default:
         return `${baseCmd}: command not found`;
     }
   }
 
-  function handleInput(e) {
+  // Update input in prompts array at index
+  function updatePromptInput(index, value) {
+    setPrompts(prev =>
+      prev.map((p, i) => (i === index ? { ...p, input: value } : p))
+    );
+  }
+
+  // Handle key events on input
+  function handleInput(e, index) {
+    const currentPrompt = prompts[index];
     if (e.key === "Enter") {
-      const newHistory = [...history, `[${username}@${hostname} ~]$ ${input}`];
+      e.preventDefault();
+      const input = currentPrompt.input.trim();
+      const output = input ? runCommand(input).split("\n") : [];
 
-      const result = runCommand(input);
-      if (result) newHistory.push(result);
+      // Append output and add new prompt line
+      setPrompts(prev => [
+        ...prev.slice(0, index),
+        { ...currentPrompt, output },
+        { input: "", output: [], id: prev.length }
+      ]);
 
-      setHistory(newHistory);
-      setInput("");
+      // Add to history if command entered
+      if (input) {
+        setCommandHistory(prev => [...prev, input]);
+        setHistoryIndex(-1);
+      }
+
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (commandHistory.length === 0) return;
+
+      // Move up in history but not below 0
+      const newIndex = historyIndex <= 0 ? 0 : historyIndex - 1;
+      setHistoryIndex(newIndex);
+      updatePromptInput(index, commandHistory[newIndex]);
+
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (commandHistory.length === 0) return;
+
+      // Move down in history or clear input if at end
+      const newIndex = historyIndex === -1 ? -1 : Math.min(historyIndex + 1, commandHistory.length - 1);
+      setHistoryIndex(newIndex);
+      updatePromptInput(index, newIndex === -1 ? "" : commandHistory[newIndex]);
+
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      const match = supportedCommands.find(cmd => cmd.startsWith(currentPrompt.input));
+      if (match) {
+        updatePromptInput(index, match);
+      }
     }
   }
 
   return (
     <div
-      className="h-screen w-screen bg-black text-green-400 font-mono text-sm p-4"
+      ref={containerRef}
+      className="h-screen w-screen bg-black text-green-400 font-mono text-sm p-4 overflow-y-auto"
       onClick={() => inputRef.current?.focus()}
     >
       <div className="whitespace-pre-wrap">
-        {history.map((line, i) => (
-          <div key={i}>{line}</div>
-        ))}
-
         <div>
-          [{username}@{hostname} ~]${" "}
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleInput}
-            autoComplete="off"
-            spellCheck="false"
-            className="bg-black text-green-400 font-mono outline-none border-none p-0 m-0 w-[60ch]"
-            style={{ caretColor: "lime" }}
-          />
-          <span className="animate-pulse">_</span>
+          Welcome to Arch Linux {new Date().toLocaleString()}
+          <br />
+          Last login: {new Date().toLocaleString()} on tty1
+          <br /><br />
         </div>
+
+        {prompts.map((prompt, i) => (
+          <div key={prompt.id} className="mb-1">
+            <div>
+              [{username}@{hostname} ~]${" "}
+              <input
+                ref={i === prompts.length - 1 ? inputRef : null}
+                type="text"
+                value={prompt.input}
+                onChange={e => updatePromptInput(i, e.target.value)}
+                onKeyDown={e => handleInput(e, i)}
+                autoComplete="off"
+                spellCheck="false"
+                className="bg-black text-green-400 font-mono outline-none border-none p-0 m-0 w-[60ch]"
+                style={{ caretColor: "lime" }}
+                aria-label="terminal command input"
+              />
+              <span className="animate-pulse">_</span>
+            </div>
+            {prompt.output.map((line, j) => (
+              <div key={j}>{line}</div>
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
 }
+
+
+
