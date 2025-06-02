@@ -138,9 +138,11 @@ Supported commands:
           .join("\n") || "No commands in history.";
 
       case "shutdown":
+        navigate("/login");
         return "System is shutting down... Goodbye!";
 
       case "reboot":
+        navigate("/login");
         return "System is rebooting... See you soon!";
 
       case "exit":
